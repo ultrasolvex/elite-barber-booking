@@ -1,0 +1,41 @@
+{
+  "name": "Barber Shop Booking",
+  "short_name": "BarberBook",
+  "description": "Book your barber appointments easily and quickly",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0D1521",
+  "theme_color": "#0D1521",
+  "orientation": "portrait-primary",
+  "scope": "./",
+  "lang": "en",
+  "categories": ["business", "lifestyle"],
+  "icons": [
+    {
+      "src": "ic.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "screenshot-narrow.png",
+      "sizes": "375x667",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+}

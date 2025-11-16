@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barber Client Booking</title>
+<meta name="theme-color" content="#0D1521">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BarberBook">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+  /* ---------------------------------------------------- */
+  /* Global Reset and Base Styles */
+  /* ---------------------------------------------------- */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;font-family:Arial,sans-serif;position:relative;overflow-y:auto}
+  ::-webkit-scrollbar { display: none; }
+  body { -webkit-overflow-scrolling: touch; }
+  /* ADDED: Global Tap/Focus Removal for Mobile devices */
+  *{
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+  }
+  /* ===== Background (Single Image Only) ===== */
+  .slider{position:fixed;inset:0;z-index:-1;overflow:hidden}
+  .slide{position:absolute;inset:0;background-size:cover;background-position:center;opacity:1}
+  /* ===== Dock ===== */
+  .dock{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:rgba(255,255,255,.15);backdrop-filter:blur(25px);
+    border-radius:30px;padding:8px 30px;display:flex;flex-direction:row-reverse;
+    gap:22px;border:1px solid rgba(255,255,255,.25);box-shadow:0 12px 30px rgba(0,0,0,.25);
+    z-index:1000;
+  }
+  .dock a{width:55px;height:55px;border-radius:20px;transition:.35s;display:flex;align-items:center;justify-content:center;
+    background:transparent;position:relative;overflow:hidden;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  }
+  .dock a.active-dock-icon {
+    transform:scale(1.28) translateY(-7px);
+  }
+  .dock svg{width:62%;height:62%;fill:none;stroke:aqua;stroke-width:1;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
+  }
+  @media(max-width:768px){
+    .dock{gap:18px;padding:7px 25px;border-radius:28px}
+    .dock a{width:50px;height:50px;border-radius:18px}
+  }
+  @media(max-width:480px){
+    .dock{gap:16px;padding:6px 22px;border-radius:25px}
+    .dock a{width:48px;height:48px;border-radius:18px}
+  }
+  /* ===== Quotes & Promo ===== */
+  .quote-container {
+    position: fixed;top:0;left:0;width:100%;height:100%;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    pointer-events:none;z-index:5;gap:18px;
+  }
+  .quote {
+    font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;font-weight:300;
+    font-size:clamp(2.2rem,8vw,4rem);letter-spacing:3px;text-transform:uppercase;
+    background:linear-gradient(90deg,#fffbe6,#ffd700,#fffbe6);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+    text-shadow:0 0 15px rgba(255,215,0,.6),0 0 30px rgba(255,220,0,.4),0 0 50px rgba(255,230,0,.2);
+    opacity:0;transform:translateY(-60px);transition:opacity .5s ease,transform .7s cubic-bezier(.25,.8,.25,1);
+    white-space:nowrap;
+  }
+  .quote.bottom{transform:translateY(60px);}
+  .quote.show{opacity:1;transform:translateY(0);}
+  .quote.glow::before{
+    content:'';position:absolute;top:0;left:-150%;width:50%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+    transform:skewX(-25deg);animation:glowPass .8s ease-out forwards;
+  }
+  @keyframes glowPass{to{left:150%;}}
+  .promo-text {
+    position: fixed;bottom: -80px;left: 50%;transform: translateX(-50%);
+    z-index: 8;opacity: 0;text-align: center;
+    font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;font-weight:300;
+    font-size: clamp(1.1rem, 2.8vw, 1.4rem);letter-spacing: 2.5px;
+    background: linear-gradient(90deg,#fffbe6,#ffd700,#fffbe6);
+    -webkit-background-clip: text;background-clip: text;-webkit-text-fill-color: transparent;
+    text-shadow: 0 0 15px rgba(255,215,0,.6), 0 0 30px rgba(255,220,0,.4);
+    transition: all 1.4s cubic-bezier(0.25, 0.8, 0.25, 1);pointer-events: none;
+    width: 90%;max-width: 460px;
+  }
+  .promo-text.show {bottom: auto;top: 70%;opacity: 1;pointer-events: auto;}
+  /* ===== Book Now Button (Modified) ===== */
+  .bold-cta {
+    position: fixed;
+    top: 40%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9;
+    opacity: 0;
+    font-size: clamp(1.6rem, 4.5vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    background: linear-gradient(90deg, #ffeb3b, #ffc107, #ffeb3b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.7), 0 3px 6px rgba(0,0,0,0.5);
+    padding: 14px 36px;
+    border-radius: 16px;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 1.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+    pointer-events: none;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    white-space: nowrap;
+    max-width: 90%;
+    width: fit-content;
+    text-align: center;
+  }
+  .bold-cta.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .bold-cta:hover {
+    transform: translateX(-50%) scale(1.1);
+  }
+  /* ===== Booking Modal ===== */
+  .booking-modal {
+    position: fixed;inset: 0;background: rgba(0, 0, 0, 0.85);backdrop-filter: blur(12px);
+    display: none;align-items: flex-start;justify-content: center;z-index: 100;
+    padding: 1px 4px;overflow-y: auto;opacity: 0;transition: opacity 0.4s ease;
+    scroll-behavior: smooth;
+  }
+  .booking-modal.show {display: flex;opacity: 1;}
+  .booking-card {
+    background: rgba(255, 255, 255, 0.08);border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;width: 100%;max-width: 340px;margin-top: 1px;margin-bottom: 90px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);color: #fff;font-family: 'Segoe UI', sans-serif;
+    display: flex;flex-direction: column;max-height: calc(100vh - 91px);overflow: hidden;
+  }
+  .booking-form, .booking-details, .no-booking {
+    padding: 20px 16px;flex: 1;overflow-y: auto;scrollbar-width: none;
+  }
+  .booking-form::-webkit-scrollbar, .booking-details::-webkit-scrollbar, .no-booking::-webkit-scrollbar { display: none; }
+  .booking-form h2, .booking-details h2, .no-booking h2 {
+    text-align: center;font-size: 1.5rem;margin-bottom: 16px;
+    background: linear-gradient(90deg, #ffd700, #fffbe6);
+    -webkit-background-clip: text;background-clip: text;-webkit-text-fill-color: transparent;
+  }
+  .no-booking p {
+    text-align: center;color: #aaa;font-size: 1.1rem;margin-top: 20px;
+  }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block;margin-bottom: 5px;font-size: 0.9rem;color: #ddd; }
+  .form-group input, .form-group select {
+    width: 100%;padding: 11px 12px;border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);border-radius: 12px;color: #fff;font-size: 0.95rem;
+    outline: none;transition: all 0.3s ease;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: #ffd700;box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+  }
+  .form-group select option { background: #111;color: #fff; }
+  .form-group select option:disabled { color: #666;text-decoration: line-through; }
+  .submit-btn, .cancel-btn {
+    width: 100%;padding: 14px;background: linear-gradient(90deg, #ffeb3b, #ffc107);
+    color: #000;font-weight: 700;font-size: 1.1rem;border: none;border-radius: 14px;
+    cursor: pointer;margin-top: 10px;transition: all 0.3s ease;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+  }
+  .submit-btn:hover, .cancel-btn:hover {
+    transform: translateY(-2px);box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  }
+  .cancel-btn { background: linear-gradient(90deg, #ff4444, #cc0000); }
+  .detail-item {
+    margin-bottom: 12px;font-size: 1rem;color: #fff;
+  }
+  .detail-item strong { color: #ffd700; }
+  @media (min-width: 769px) {
+    .booking-modal { display: none !important; }
+  }
+  /* ===== Services & Contact Pages ===== */
+  .services-page {
+    position: fixed; inset: 0; background:#0D1521; z-index: 200;
+    display: none; flex-direction: column; overflow-y: auto;
+    opacity: 0; transition: opacity .3s ease;
+    padding: 12px 8px;
+  }
+  .services-page.show { display: flex; opacity: 1; }
+  .gallery {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-auto-rows: 50vh;
+    gap: 12px;
+    max-width: 100%;
+    margin: 0 auto;
+    padding-bottom: 90px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .gallery img {
+    width: 100%; height: 100%; object-fit: cover;
+    border-radius: 10px; background:transparent;
+    transition: transform .2s ease;
+  }
+  .gallery img:hover { transform: scale(1.03); }
+  .contact-page {
+    position: fixed; inset: 0; background: transparent; backdrop-filter: none;
+    z-index: 100; display: none; flex-direction: column; overflow: hidden;
+    padding: 0; opacity: 0; transition: opacity 0.4s ease;
+    color: #ffffff;
+  }
+  .contact-page.show { display: flex; opacity: 1; overflow: hidden; }
+  .contact-scroll-container {
+    flex: 1; overflow-y: auto; padding: 40px 20px 140px;
+    display: flex; flex-direction: column; align-items: center;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .contact-scroll-container::-webkit-scrollbar { display: none; }
+  .contact-title {
+    font-size: clamp(2.8rem, 10vw, 4.5rem);
+    font-weight: 800; margin-bottom: 20px; text-align: center;
+    background: linear-gradient(90deg, #ffd700, #fffbe6, #ffd700);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.7), 0 0 40px rgba(255, 220, 0, 0.4);
+    letter-spacing: 3px;
+  }
+  .about-text {
+    font-size: 1.15rem; color: #f0f0f0; margin-bottom: 30px; line-height: 1.8;
+    font-style: italic; text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    max-width: 90%; text-align: center;
+  }
+  .info-group {
+    background: rgba(0, 0, 0, 0.35); border-radius: 16px; padding: 20px; margin-bottom: 35px;
+    backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.15);
+    width: 90%; max-width: 380px;
+    text-align: center;
+  }
+  .info-group p {
+    margin-bottom: 14px; font-size: 1.05rem; color: #ffffff;
+  }
+  .info-group strong {
+    color: #ffeb3b; font-weight: 700; display: block; margin-bottom: 8px;
+    font-size: 1.2rem;
+  }
+  .info-group .time-details {
+    color: #ddd; font-size: 0.95rem; margin-top: 6px; display: block; line-height: 1.6;
+  }
+  .phone-link {
+    color: #ffeb3b; text-decoration: none; font-weight: 600;
+    font-size: 1.1rem;
+  }
+  .social-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: auto auto;
+    gap: 25px;
+    padding: 15px 20px;
+    justify-items: center;
+    max-width: 300px;
+    margin: 0 auto 40px;
+  }
+  .social-grid a {
+    display: flex; justify-content: center; align-items: center;
+    width: 76px; height: 76px; background: rgba(255,255,255,0.1);
+    border-radius: 50%; transition: all 0.3s ease; backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .social-grid a:hover {
+    transform: scale(1.25); background: rgba(255,215,0,0.2); box-shadow: 0 0 20px rgba(255,215,0,0.5);
+  }
+  .social-grid img {
+    width: 68%; height: 68%; object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+  }
+  #whatsapp-icon { grid-column: 3; grid-row: 1; }
+  #instagram-icon { grid-column: 2; grid-row: 1; }
+  #telegram-icon { grid-column: 1; grid-row: 1; }
+  #phone-icon { grid-column: 2; grid-row: 2; }
+  .dock-spacer {
+    height: 120px;
+  }
+  .contact-bg {
+    position: fixed; inset: 0;
+    background-image: url('c1.jpg');
+    background-size: cover; background-position: center;
+    z-index: 99; opacity: 0.95; display: none;
+  }
+  .contact-page.show ~ .contact-bg { display: block; }
+  /* ===== Toasts ===== */
+  .success-toast, .cancellation-toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: #00FFFF;
+    padding: 20px 30px;
+    border-radius: 15px;
+    font-size: 1.2rem;
+    font-weight: 600;
+    z-index: 5000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+    max-width: 90%;
+    text-align: center;
+    box-shadow: 0 8px 30px rgba(0, 255, 255, 0.4);
+    pointer-events: none;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+  }
+  .cancellation-toast { padding: 18px 25px; font-size: 1.15rem; }
+  .success-toast.show, .cancellation-toast.show {
+    opacity: 1;
+    visibility: visible;
+  }
+  /* ===== Image Loading States ===== */
+  .image-placeholder {
+    background: linear-gradient(90deg, #1a2a3a, #2a3a4a, #1a2a3a);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+  }
+  
+  @keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
+</head>
+<body>
+<!-- Single Background Image -->
+<div class="slider">
+  <div class="slide active" style="background-image:url('f1.jpg')"></div>
+</div>
+<!-- Dock Navigation -->
+<div class="dock">
+  <a href="#" id="homeBtn" title="Home">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  </a>
+  <a href="#" id="mobileBookBtn" title="Book">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  </a>
+  <a href="#" id="servicesBtn" title="Services">
+    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </a>
+  <a href="#" id="contactBtn" title="Contact">
+    <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+  </a>
+</div>
+<!-- Quotes -->
+<div class="quote-container">
+  <div class="quote top" id="quote1"></div>
+  <div class="quote bottom" id="quote2"></div>
+</div>
+<!-- Promo & CTA -->
+<div class="promo-text" id="promoText">Enjoy an Exceptional Experience</div>
+<a href="#" class="bold-cta" id="ctaButton">Book Now</a>
+<!-- Booking Modal -->
+<div class="booking-modal" id="bookingModal">
+  <div class="booking-card">
+    <div class="no-booking" id="noBookingView"><h2>No Previous Booking</h2><p>You haven't booked any appointment yet.</p></div>
+    <form class="booking-form" id="bookingForm">
+      <h2>Book Your Slot</h2>
+      <div class="form-group"><label for="name">Name</label><input type="text" id="name" required placeholder="Enter your name" pattern="[A-Za-z\s]+" title="Letters only"></div>
+      <div class="form-group"><label for="phone">Mobile Number</label><input type="tel" id="phone" required placeholder="e.g. 01012345678" pattern="[0-9]{11}" title="11 digits only"></div>
+      <div class="form-group"><label for="service">Service Type</label>
+        <select id="service" required>
+          <option value="" disabled selected>Select service</option>
+          <option value="haircut">Haircut</option>
+          <option value="beard">Beard Trim</option>
+          <option value="haircolor">Hair Coloring</option>
+          <option value="facial">Facial Treatment</option>
+          <option value="combo">Combo Package</option>
+        </select>
+      </div>
+      <div class="form-group"><label for="date">Date</label><select id="date" required></select></div>
+      <div class="form-group"><label for="time">Time Slot</label><select id="time" required><option value="" disabled selected>Select time</option></select></div>
+      <button type="submit" class="submit-btn">Book Now</button>
+    </form>
+    <div class="booking-details" id="bookingDetails">
+      <h2>You Have a Booking</h2>
+      <div class="detail-item"><strong>Name:</strong> <span id="detName"></span></div>
+      <div class="detail-item"><strong>Phone:</strong> <span id="detPhone"></span></div>
+      <div class="detail-item"><strong>Service:</strong> <span id="detService"></span></div>
+      <div class="detail-item"><strong>Date:</strong> <span id="detDate"></span></div>
+      <div class="detail-item"><strong>Time:</strong> <span id="detTime"></span></div>
+      <button class="cancel-btn" id="cancelBooking">Cancel Booking</button>
+    </div>
+  </div>
+</div>
+<!-- Services Page -->
+<div class="services-page" id="servicesPage">
+  <div class="gallery" id="galleryContainer"></div>
+</div>
+<!-- Contact Page -->
+<div class="contact-page" id="contactPage">
+  <div class="contact-scroll-container">
+    <h2 class="contact-title">Contact Us</h2>
+    <p class="about-text">"Where elegance meets professionalism. We turn haircuts into art, ensuring you get a look that reflects your uniqueness."</p>
+    <div class="info-group">
+      <p><strong>Working Hours:</strong>
+        <span class="time-details">All days except Monday.<br>From 3:00 PM to 2:00 AM.</span>
+      </p>
+      <p><strong>Location:</strong> Um Dinar, next to Hisham Cafe.</p>
+      <p><strong>Phone:</strong> <a href="tel:+2012345678900" class="phone-link">012345678900</a></p>
+    </div>
+    <div class="social-grid">
+      <a href="https://wa.me/2012345678900" target="_blank" id="whatsapp-icon" title="WhatsApp">
+        <img src="whats.png" alt="WhatsApp">
+      </a>
+      <a href="https://www.instagram.com/your_barber_account" target="_blank" id="instagram-icon" title="Instagram">
+        <img src="inst.png" alt="Instagram">
+      </a>
+      <a href="https://t.me/your_telegram_account" target="_blank" id="telegram-icon" title="Telegram">
+        <img src="teleg.png" alt="Telegram">
+      </a>
+      <a href="tel:+2012345678900" id="phone-icon" title="Call Us">
+        <img src="tel.png" alt="Phone">
+      </a>
+    </div>
+    <div class="dock-spacer"></div>
+  </div>
+</div>
+<div class="contact-bg"></div>
+<!-- Toasts -->
+<div class="success-toast" id="successToast"><p>Booking Successful!</p></div>
+<div class="cancellation-toast" id="cancellationToast"><p>Your appointment has been cancelled by the salon.</p></div>
+<script>
+// Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyDd2uTkqOcwgDIRHVpRhThB-NtXW7x5qGk",
+  authDomain: "pixup-4e257.firebaseapp.com",
+  databaseURL: "https://pixup-4e257-default-rtdb.firebaseio.com",
+  projectId: "pixup-4e257",
+  storageBucket: "pixup-4e257.firebasestorage.app",
+  messagingSenderId: "941738425715",
+  appId: "1:941738425715:web:d5a513a1b6cbb4b4611906",
+  measurementId: "G-VZHXB6XHDB"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const bookingsRef = db.ref('bookings');
+// Global Variables
+let currentBooking = null;
+const PHONE_KEY = 'userPhone';
+const BOOKING_KEY = 'userBooking';
+let userPhone = localStorage.getItem(PHONE_KEY) || null;
+// UI Elements
+const mobileBookBtn = document.getElementById('mobileBookBtn');
+const homeBtn = document.getElementById('homeBtn');
+const ctaButton = document.getElementById('ctaButton');
+const servicesBtn = document.getElementById('servicesBtn');
+const contactBtn = document.getElementById('contactBtn');
+const bookingModal = document.getElementById('bookingModal');
+const servicesPage = document.getElementById('servicesPage');
+const contactPage = document.getElementById('contactPage');
+const noBookingView = document.getElementById('noBookingView');
+const bookingForm = document.getElementById('bookingForm');
+const bookingDetails = document.getElementById('bookingDetails');
+const dateSelect = document.getElementById('date');
+const timeSelect = document.getElementById('time');
+const cancelBooking = document.getElementById('cancelBooking');
+const nameInput = document.getElementById('name');
+const phoneInput = document.getElementById('phone');
+const successToast = document.getElementById('successToast');
+const cancellationToast = document.getElementById('cancellationToast');
+
+// تحسين تحميل الصور في معرض الخدمات
+let loadedImageGroups = new Set();
+
+function loadGalleryImages() {
+  const gallery = document.getElementById('galleryContainer');
+  gallery.innerHTML = '';
+  
+  // إنشاء عناصر صور فارغة مع فئات للتعرف عليها
+  for (let i = 1; i <= 14; i++) {
+    const imgContainer = document.createElement('div');
+    imgContainer.className = 'image-container';
+    imgContainer.dataset.imageIndex = i;
+    
+    const img = document.createElement('img');
+    img.alt = `Service ${i}`;
+    img.loading = 'lazy';
+    
+    // تحميل أول 3 صور فوراً
+    if (i <= 3) {
+      img.src = `p${i}.jpg`;
+      loadedImageGroups.add(1); // المجموعة الأولى محملة
+    } else {
+      // إضافة فئة للصور غير المحملة
+      img.classList.add('image-placeholder');
+    }
+    
+    // معالجة أخطاء تحميل الصور
+    img.onerror = function() {
+      this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWEyYTM5Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIE5vdCBGb3VuZDwvdGV4dD48L3N2Zz4=';
+      this.alt = 'Image not available';
+    };
+    
+    imgContainer.appendChild(img);
+    gallery.appendChild(imgContainer);
+  }
+  
+  // إضافة مستمع للتمرير لتحميل الصور عند الحاجة
+  setupIntersectionObserver();
+}
+
+function setupIntersectionObserver() {
+  const imageContainers = document.querySelectorAll('.image-container');
+  
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const imgContainer = entry.target;
+        const imgIndex = parseInt(imgContainer.dataset.imageIndex);
+        const img = imgContainer.querySelector('img');
+        
+        // تحديد المجموعة التي تنتمي إليها الصورة
+        const group = Math.ceil(imgIndex / 3);
+        
+        // إذا لم تكن هذه المجموعة محملة بعد، قم بتحميلها
+        if (!loadedImageGroups.has(group)) {
+          loadImageGroup(group);
+        }
+        
+        // إذا كانت الصورة لا تزال غير محملة، قم بتحميلها
+        if (img.classList.contains('image-placeholder')) {
+          img.src = `p${imgIndex}.jpg`;
+          img.classList.remove('image-placeholder');
+        }
+      }
+    });
+  }, {
+    rootMargin: '100px 0px', // تحميل الصور قبل 100px من ظهورها
+    threshold: 0.1
+  });
+  
+  imageContainers.forEach(container => {
+    observer.observe(container);
+  });
+}
+
+function loadImageGroup(group) {
+  const startIndex = (group - 1) * 3 + 1;
+  const endIndex = Math.min(startIndex + 2, 14); // لا تتجاوز 14 صورة
+  
+  for (let i = startIndex; i <= endIndex; i++) {
+    const imgContainer = document.querySelector(`.image-container[data-image-index="${i}"]`);
+    if (imgContainer) {
+      const img = imgContainer.querySelector('img');
+      if (img.classList.contains('image-placeholder')) {
+        img.src = `p${i}.jpg`;
+        img.classList.remove('image-placeholder');
+      }
+    }
+  }
+  
+  loadedImageGroups.add(group);
+}
+
+// Animate Quotes & CTA
+window.addEventListener('load', () => {
+  const q1 = document.getElementById('quote1');
+  const q2 = document.getElementById('quote2');
+  const promoText = document.getElementById('promoText');
+  const ctaButton = document.getElementById('ctaButton');
+  
+  // تعيين النصوص
+  q1.textContent = "Style That Defines";
+  q2.textContent = "Your Personality";
+  
+  setTimeout(() => { q1.classList.add('show'); q2.classList.add('show'); }, 800);
+  setTimeout(() => { q1.classList.add('glow'); q2.classList.add('glow'); }, 1100);
+  setTimeout(() => { 
+    q1.style.opacity = '0'; 
+    q2.style.opacity = '0'; 
+    setTimeout(() => { 
+      q1.remove(); 
+      q2.remove(); 
+    }, 1000); 
+  }, 3000);
+  setTimeout(() => { 
+    promoText.classList.add('show'); 
+    setTimeout(() => { 
+      ctaButton.classList.add('show'); 
+    }, 300); 
+  }, 1500);
+  
+  // تحميل معرض الصور
+  loadGalleryImages();
+});
+
+// Date & Time Logic
+const today = new Date(); today.setHours(0,0,0,0);
+function generateDateOptions() {
+  const options = [], dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const cur = new Date(today);
+  let added = 0;
+  for (let i = 0; added < 7; i++) {
+    const d = new Date(cur); d.setDate(cur.getDate() + i);
+    if (d.getDay() !== 1) {
+      const v = d.toISOString().split('T')[0];
+      const l = `${dayNames[d.getDay()]} - ${d.toLocaleDateString('en-GB')}`;
+      options.push({value:v,label:l}); added++;
+    }
+  }
+  return options;
+}
+const dateOptions = generateDateOptions();
+function populateDate() {
+  dateSelect.innerHTML = '<option value="" disabled selected>Select Day</option>';
+  dateOptions.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.value; opt.textContent = o.label;
+    dateSelect.appendChild(opt);
+  });
+  if (dateSelect.options.length > 1) dateSelect.selectedIndex = 1;
+}
+function generateTimeSlots() {
+  const slots = []; let hour = 15, minute = 0;
+  while (hour < 26) {
+    const h = hour % 24;
+    const dispH = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+    const period = h < 12 || h >= 24 ? 'AM' : 'PM';
+    const label = `${dispH}:${minute.toString().padStart(2,'0')} ${period}`;
+    const value = `${h.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+    slots.push({value,label});
+    minute += 20; if (minute >= 60) { minute = 0; hour++; }
+  }
+  return slots;
+}
+const allTimeSlots = generateTimeSlots();
+let bookings = {};
+bookingsRef.on('value', snap => {
+  const oldBookings = bookings;
+  bookings = snap.val() || {};
+  if (userPhone) checkForCancellation(oldBookings, bookings);
+  if (dateSelect.value) loadTimeSlots();
+  loadUserBooking();
+});
+function isPast(dateStr, timeStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const [h,min] = timeStr.split(':').map(Number);
+  return new Date(y,m-1,d,h,min) < new Date();
+}
+function loadTimeSlots() {
+  const date = dateSelect.value;
+  timeSelect.innerHTML = '<option value="" disabled selected>Select time</option>';
+  if (!date) return;
+  const day = bookings[date] || {};
+  const isToday = new Date().toISOString().split('T')[0] === date;
+  allTimeSlots.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.value; opt.textContent = s.label;
+    let count = 0;
+    const slots = day[s.value] || {};
+    Object.keys(slots).forEach(key => {
+        if (!slots[key].cancelled) count++;
+    });
+    if (count >= 2) { opt.disabled = true; opt.textContent += ' (Full)'; }
+    else if (isToday && isPast(date, s.value)) { opt.disabled = true; opt.textContent += ' (Passed)'; }
+    timeSelect.appendChild(opt);
+  });
+}
+function showNoBooking(){ noBookingView.style.display='block'; bookingForm.style.display='none'; bookingDetails.style.display='none'; }
+function showForm(){ noBookingView.style.display='none'; bookingForm.style.display='block'; bookingDetails.style.display='none'; populateDate(); loadTimeSlots(); }
+function showDetails(b){
+  document.getElementById('detName').textContent=b.name;
+  document.getElementById('detPhone').textContent=b.phone;
+  document.getElementById('detService').textContent=b.service;
+  document.getElementById('detDate').textContent=b.dateLabel;
+  document.getElementById('detTime').textContent=b.timeLabel;
+  noBookingView.style.display='none'; bookingForm.style.display='none'; bookingDetails.style.display='block';
+}
+function setActiveDockIcon(activeId) {
+  document.querySelectorAll('.dock a').forEach(link => link.classList.remove('active-dock-icon'));
+  if (activeId) document.getElementById(activeId)?.classList.add('active-dock-icon');
+}
+function closeAllPages() {
+  [bookingModal, servicesPage, contactPage].forEach(p => p.classList.remove('show'));
+}
+function openBookingForm(){
+  if (window.innerWidth > 768) return;
+  closeAllPages(); bookingModal.classList.add('show'); showForm(); setActiveDockIcon('homeBtn');
+}
+function openBookingStatus(){
+  if (window.innerWidth > 768) return;
+  closeAllPages(); bookingModal.classList.add('show');
+  currentBooking ? showDetails(currentBooking) : showNoBooking();
+  setActiveDockIcon('mobileBookBtn');
+}
+function showSuccessToast() {
+  successToast.classList.add('show');
+  setTimeout(() => {
+    successToast.classList.remove('show');
+    setTimeout(openBookingStatus, 500);
+  }, 2000);
+}
+function showCancellationToast() {
+  cancellationToast.classList.add('show');
+  setTimeout(() => cancellationToast.classList.remove('show'), 4000);
+}
+function checkForCancellation(oldBookings, newBookings) {
+  if (!userPhone) return;
+  let wasBooked = false, isBooked = false;
+  Object.keys(oldBookings).forEach(date => {
+    Object.keys(oldBookings[date] || {}).forEach(time => {
+      Object.keys(oldBookings[date][time] || {}).forEach(key => {
+        const b = oldBookings[date][time][key];
+        if (b.phone === userPhone && !b.cancelled) wasBooked = true;
+      });
+    });
+  });
+  Object.keys(newBookings).forEach(date => {
+    Object.keys(newBookings[date] || {}).forEach(time => {
+      Object.keys(newBookings[date][time] || {}).forEach(key => {
+        const b = newBookings[date][time][key];
+        if (b.phone === userPhone && !b.cancelled) isBooked = true;
+      });
+    });
+  });
+  if (wasBooked && !isBooked) {
+    showCancellationToast();
+    localStorage.removeItem(PHONE_KEY);
+    localStorage.removeItem(BOOKING_KEY);
+    userPhone = null; currentBooking = null;
+  }
+}
+function loadUserBooking() {
+  let found = false; currentBooking = null;
+  const storedPhone = localStorage.getItem(PHONE_KEY);
+  if (!storedPhone) return;
+  Object.keys(bookings).forEach(date => {
+    Object.keys(bookings[date] || {}).forEach(time => {
+      Object.keys(bookings[date][time] || {}).forEach(key => {
+        const b = bookings[date][time][key];
+        if (b.phone === storedPhone && !b.cancelled && !isPast(date, time)) {
+          currentBooking = { ...b, id: key, date, time, dateLabel: b.dateLabel || getDateLabel(date), timeLabel: b.timeLabel || getTimeLabel(time) };
+          found = true;
+          localStorage.setItem(BOOKING_KEY, JSON.stringify(currentBooking));
+        }
+      });
+    });
+  });
+  if (!found) {
+    const stored = localStorage.getItem(BOOKING_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (!isPast(parsed.date, parsed.time)) currentBooking = parsed;
+      else localStorage.removeItem(BOOKING_KEY);
+    }
+  }
+}
+function getDateLabel(dateStr) {
+  const date = new Date(dateStr);
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  return `${dayNames[date.getDay()]} - ${date.toLocaleDateString('en-GB')}`;
+}
+function getTimeLabel(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const dispH = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  const period = h < 12 || h >= 24 ? 'AM' : 'PM';
+  return `${dispH}:${m.toString().padStart(2,'0')} ${period}`;
+}
+
+// تحقق من رقم الهاتف المصري
+function isValidEgyptianPhone(phone) {
+  return /^01[0-2,5]{1}[0-9]{8}$/.test(phone);
+}
+
+// Event Handlers
+bookingForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const name = nameInput.value.trim(), phone = phoneInput.value.trim(),
+        service = document.getElementById('service').value,
+        date = dateSelect.value, time = timeSelect.value,
+        dateLabel = dateSelect.selectedOptions[0].textContent,
+        timeLabel = timeSelect.selectedOptions[0].textContent;
+  
+  if (!name || !phone || phone.length !== 11 || !service || !date || !time){
+    alert('Please fill all fields correctly.');
+    return;
+  }
+  
+  // تحقق من رقم الهاتف المصري
+  if (!isValidEgyptianPhone(phone)) {
+    alert('Please enter a valid Egyptian phone number (e.g., 01012345678)');
+    return;
+  }
+  
+  const day = bookings[date] || {};
+  const slot = day[time] || {};
+  let activeCount = 0;
+  Object.keys(slot).forEach(key => { if (!slot[key].cancelled) activeCount++; });
+  if (activeCount >= 2) { alert('This time slot is full.'); loadTimeSlots(); return; }
+  const newBooking = { name, phone, service, dateLabel, timeLabel, timestamp: new Date().toISOString() };
+  localStorage.setItem(PHONE_KEY, phone);
+  userPhone = phone;
+  bookingsRef.child(date).child(time).push(newBooking).then(() => {
+    showSuccessToast();
+    bookingForm.reset();
+    setTimeout(loadUserBooking, 1000);
+  }).catch(() => alert('Error, try again.'));
+});
+cancelBooking.addEventListener('click', () => {
+  if (!currentBooking || !currentBooking.id) return;
+  if (confirm('Are you sure you want to cancel this booking?')) {
+    bookingsRef.child(currentBooking.date).child(currentBooking.time).child(currentBooking.id)
+      .update({ cancelled: true, cancelledBy: 'user', cancelledAt: new Date().toISOString() })
+      .then(() => {
+        currentBooking = null;
+        localStorage.removeItem(PHONE_KEY);
+        localStorage.removeItem(BOOKING_KEY);
+        userPhone = null;
+        showNoBooking();
+      }).catch(() => alert('Error during cancellation.'));
+  }
+});
+mobileBookBtn.addEventListener('click', e=>{ e.preventDefault(); openBookingStatus(); });
+ctaButton.addEventListener('click', e=>{ e.preventDefault(); openBookingForm(); });
+homeBtn.addEventListener('click', e=>{ e.preventDefault(); closeAllPages(); setActiveDockIcon('homeBtn'); });
+bookingModal.addEventListener('click', e=>{ if(e.target===bookingModal) { bookingModal.classList.remove('show'); setActiveDockIcon('homeBtn'); } });
+dateSelect.addEventListener('change', loadTimeSlots);
+nameInput.addEventListener('input',()=>{ nameInput.value = nameInput.value.replace(/[^A-Za-z\s]/g,''); });
+phoneInput.addEventListener('input',()=>{ phoneInput.value = phoneInput.value.replace(/[^0-9]/g,'').slice(0,11); });
+servicesBtn.addEventListener('click', e=>{ e.preventDefault(); closeAllPages(); servicesPage.classList.add('show'); setTimeout(() => window.scrollTo(0, 0), 50); setActiveDockIcon('servicesBtn'); });
+servicesPage.addEventListener('click', e=>{ if(e.target === servicesPage) { servicesPage.classList.remove('show'); setActiveDockIcon('homeBtn'); } });
+contactBtn.addEventListener('click', e => {
+  e.preventDefault(); closeAllPages();
+  if (window.innerWidth <= 768) {
+    contactPage.classList.add('show');
+    setActiveDockIcon('contactBtn');
+    setTimeout(() => contactPage.querySelector('.contact-scroll-container').scrollTop = 0, 100);
+  } else {
+    alert('Contact: Um Dinar, next to Hisham Cafe. Phone: 012345678900');
+    setActiveDockIcon('contactBtn');
+  }
+});
+contactPage.addEventListener('click', e => {
+  if (e.target === contactPage || e.target === contactPage.querySelector('.contact-scroll-container')) {
+    contactPage.classList.remove('show');
+    setActiveDockIcon('homeBtn');
+  }
+});
+
+// Init
+setActiveDockIcon('homeBtn');
+populateDate();
+loadTimeSlots();
+loadUserBooking();
+
+// تسجيل Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./serviceworker.js')
+      .then(function(registration) {
+        console.log('ServiceWorker registered successfully: ', registration);
+      })
+      .catch(function(error) {
+        console.log('ServiceWorker registration failed: ', error);
+      });
+  });
+}
+
+// منع سلوك التحديث بالسحب لأسفل على الأجهزة المحمولة
+document.addEventListener('touchmove', function(e) {
+  if (e.touches.length > 1) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+let startY = 0;
+document.addEventListener('touchstart', function(e) {
+  startY = e.touches[0].clientY;
+}, { passive: true });
+
+document.addEventListener('touchmove', function(e) {
+  const touchY = e.touches[0].clientY;
+  const diff = touchY - startY;
+  
+  // إذا كان المستخدم يسحب لأسفل من أعلى الصفحة
+  if (window.scrollY === 0 && diff > 0) {
+    e.preventDefault();
+  }
+}, { passive: false });
+</script>
+</body>
+</html>
